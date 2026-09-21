@@ -40,4 +40,54 @@ def result_header(text):
 
 def clear():
     os.system('cls' if os.name == 'nt' else 'clear')
+
+def ask(prompt, options=None):
+    while True:
+        answer = input(f"{CYAN} > {RESET}").strip()
+        if options and answer not in options:
+            print(f"{DIM} Please enter one of: {', '.join(options)}{RESET}")
+            continue
+        return answer
     
+def read_csv(path):
+    path = path.strip().strip("'\"")
+    if not os.path.isfile(path):
+        print(f"\n{RED}  FILE NOT FOUND: {path}{RESET}")
+        sys.exit(1)
+    with open(path, newline='', encoding='utf-8-sig') as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        rows = list(reader)
+    return header, rows
+
+def detect_columns(header):
+    skip = {'zipcode', 'city', 'state', 'lat', 'lng', 'latitude', 'longitude'}
+    exclude_keywords = ['yoy', 'change', 'visits']
+    visitor_cols = []
+    for i, col in enumerate(header):
+        col_lower = col.lower().strip()
+        if col_lower in skip:
+            continue
+        if '% Visitors' in col or '% Visits' in col:
+            visitor_cols.append(i)
+        elif col.strip() == '% of Visits':
+            visitor_cols.append(i)
+        elif 'Percentage' in col and not any(k in col_lower for k in exclude_keywords):
+            visitor_cols.append(i)
+    return visitor_cols
+
+def parse_pct(val):
+    val = val.strip().strip('%')
+    if not val or val.upper() == 'N/A':
+        return None
+    try:
+        return float(val)
+    except ValueError:
+        return None
+    
+def short_name(col_header):
+    if '/' in col_header:
+        return col_header.split('/')[0].strip()
+    return col_header.strip()
+
+
