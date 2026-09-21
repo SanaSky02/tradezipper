@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Placer AI Zip Code Analysis Noblesville
+# Placer AI Zip Code Analysis
 
 import csv
 import sys
