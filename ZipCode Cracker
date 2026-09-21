@@ -90,4 +90,24 @@ def short_name(col_header):
         return col_header.split('/')[0].strip()
     return col_header.strip()
 
-
+def get_protected_zipcodes():
+    print(f"\n{WHITE}  Enter protected zipcodes (comma-separated), or path to a .txt file,{RESET}")
+    print(f"{WHITE}  or press Enter to skip:{RESET}")
+    raw = input(f"\n{CYAN}  > {RESET}").strip().strip("'\"")
+    if not raw:
+        return set()
+    if os.path.isfile(raw):
+        with open(raw, 'r') as f:
+            zips = set()
+            for line in f:
+                for z in line.replace(',', ' ').split():
+                    z = z.strip()
+                    if z.isdigit():
+                        zips.add(z)
+            return zips
+    zips = set()
+    for z in raw.replace(',', ' ').split():
+        z = z.strip()
+        if z.isdigit():
+            zips.add(z)
+    return zips
