@@ -7,6 +7,19 @@ import os
 import time
 import shutil
 
+# ── TERMINAL COLORS ──
+CYAN    = "\033[38;2;0;255;255m"
+GREEN   = "\033[38;2;0;255;100m"
+RED     = "\033[38;2;255;50;50m"
+YELLOW  = "\033[38;2;255;255;0m"
+MAGENTA = "\033[38;2;255;0;255m"
+WHITE   = "\033[38;2;255;255;255m"
+DIM     = "\033[38;2;100;100;100m"
+ORANGE  = "\033[38;2;255;165;0m"
+BLUE    = "\033[38;2;80;140;255m"
+RESET   = "\033[0m"
+BOLD    = "\033[1m"
+
 def cols():
     return shutil.get_terminal_size().columns
 
@@ -17,7 +30,7 @@ def center(text, color=""):
         pad = max(0, (w - len(clean)) // 2)
         print(f"{color}{' ' * pad}{line}{RESET}")
 
-def slow(text, color="". delay=0.0029):
+def slow(text, color="", delay=0.0029):
     for ch in text: 
         sys.stdout.write(f"{color}{ch}{RESET}")
         sys.stdout.flush()
@@ -31,9 +44,11 @@ def section_header(text):
     print(f"\n{sp}{CYAN}{'=' * w}{RESET}")
     center(text, f"{CYAN}{BOLD}")
     print(f"{sp}{CYAN}{'=' * w}{RESET}")
-
+    
 def result_header(text):
-    ...
+    w = min(cols() - 4, 60)
+    pad = max(0, (cols() -w) // 2)
+    sp = " " * pad
     print(f"\n{sp}{GREEN}\u250C{'=' * (w - 2)}\u2510{RESET}")
     center(text, f"{GREEN}{BOLD}")
     print(f"{sp}{GREEN}\u2514{'=' * (w - 2)}\u2518{RESET}")
@@ -53,7 +68,8 @@ def read_csv(path):
     path = path.strip().strip("'\"")
     if not os.path.isfile(path):
         print(f"\n{RED}  FILE NOT FOUND: {path}{RESET}")
-        sys.exit(1)
+        print(f"{DIM}    Check the path and try again.{RESET}")
+        return None, None
     with open(path, newline='', encoding='utf-8-sig') as f:
         reader = csv.reader(f)
         header = next(reader)
@@ -111,3 +127,168 @@ def get_protected_zipcodes():
         if z.isdigit():
             zips.add(z)
     return zips
+
+def main():
+    
+    section_header("SELECT MODE")
+
+    print(f"\n{WHITE}  Is this for a grand opening or an already open location?{RESET}\n")
+    print(f"  {CYAN}[1]{RESET} {WHITE}Grand Opening{RESET}   {DIM}(no Urban Air data in file){RESET}")
+    print(f"  {CYAN}[2]{RESET} {WHITE}Already Open{RESET}    {DIM}(Urban Air data IS in file){RESET}")
+    mode = ask("", ['1', '2'])
+    is_grand_opening = (mode == '1')
+
+    # Protected zipcodes
+    section_header("PROTECTED ZIPCODES")
+    protected = get_protected_zipcodes()
+    if protected:
+        print(f"\n  {GREEN}\u2713 Loaded {len(protected)} protected zipcodes{RESET}")
+        slow(f"  {', '.join(sorted(protected))}", DIM, 0.005)
+    else:
+        print(f"\n  {DIM}No protected zipcodes.{RESET}")
+
+    # CSV file
+    section_header("LOAD CSV")
+    while True:
+        print(f"\n{WHITE}  Drag and drop the Placer CSV file (or paste the path):{RESET}")
+        csv_path = input(f"\n{CYAN}  > {RESET}").strip().strip("'\"")
+
+        header, rows = read_csv(csv_path)
+        if header is None:
+            continue
+
+        visitor_col_idxs = detect_columns(header)
+        if not visitor_col_idxs:
+            print(f"\n{RED}  No visitor % columns found. Make sure it's the % of visitors export.{RESET}")
+            continue
+
+        break
+
+    # Detect visitor columns
+    visitor_col_idxs = detect_columns(header)
+    if not visitor_col_idxs:
+        print(f"\n{RED}  Could not detect any visitor % columns. Check CSV format.{RESET}")
+        sys.exit(1)
+
+    # Show detected columns
+    print(f"\n  {GREEN}\u2713 Detected {len(visitor_col_idxs)} data column(s):{RESET}\n")
+    ua_col_idx = None
+    comp_col_idxs = []
+
+    for idx in visitor_col_idxs:
+        name = short_name(header[idx])
+        tag = ""
+        if not is_grand_opening and 'urban air' in name.lower():
+            ua_col_idx = idx
+            tag = f" {YELLOW}[URBAN AIR]{RESET}"
+        else:
+            comp_col_idxs.append(idx)
+        print(f"    {CYAN}\u25B8{RESET} {WHITE}{name}{RESET}{tag}")
+
+    if not is_grand_opening and ua_col_idx is None:
+        print(f"\n{YELLOW}  Could not auto-detect Urban Air column.{RESET}")
+        print(f"{WHITE}  Available columns:{RESET}\n")
+        for i, idx in enumerate(visitor_col_idxs):
+            print(f"    {CYAN}[{i}]{RESET} {short_name(header[idx])}")
+        pick = int(ask("\n  Which is Urban Air? Enter number: "))
+        ua_col_idx = visitor_col_idxs[pick]
+        comp_col_idxs = [x for x in visitor_col_idxs if x != ua_col_idx]
+
+    # Threshold
+    section_header("SET THRESHOLD")
+    print(f"\n{WHITE}  What percentage threshold?{RESET}\n")
+    print(f"  {CYAN}[1]{RESET} {WHITE}1%{RESET}")
+    print(f"  {CYAN}[2]{RESET} {WHITE}2%{RESET}")
+    print(f"  {CYAN}[3]{RESET} {WHITE}3%{RESET}")
+    thresh_choice = ask("", ['1', '2', '3'])
+    threshold = float(thresh_choice)
+
+    result_header(f"RESULTS  //  {threshold:.0f}% THRESHOLD")
+
+    # Find zipcode column index
+    zip_col = 0
+    for i, col in enumerate(header):
+        if col.lower().strip() == 'zipcode':
+            zip_col = i
+            break
+
+        # Urban Air zipcodes (if already open)
+    ua_zips = set()
+    if not is_grand_opening and ua_col_idx is not None:
+        ua_name = short_name(header[ua_col_idx])
+        print(f"\n  {YELLOW}\u25B8 {ua_name}{RESET} {DIM}(>= {threshold:.0f}%){RESET}")
+        print(f"  {DIM}{'-' * 50}{RESET}")
+
+        hits = []
+        for row in rows:
+            pct = parse_pct(row[ua_col_idx]) if ua_col_idx < len(row) else None
+            if pct is not None and pct >= threshold:
+                z = row[zip_col].strip().strip('"')
+                hits.append((z, pct))
+                ua_zips.add(z)
+
+                hits.sort(key=lambda x: -x[1])
+        for z, p in hits:
+            bar_w = min(int(p * 2), 30)
+            bar = f"{GREEN}{'\u2588' * bar_w}{RESET}"
+            print(f"    {WHITE}{z}{RESET}  {bar} {DIM}{p:.3f}%{RESET}")
+        print(f"  {CYAN}Total: {len(hits)}{RESET}")
+
+            # Competitor zipcodes
+    all_comp_zips = set()
+    for idx in comp_col_idxs:
+        name = short_name(header[idx])
+        print(f"\n  {MAGENTA}\u25B8 {name}{RESET} {DIM}(>= {threshold:.0f}%){RESET}")
+        print(f"  {DIM}{'-' * 50}{RESET}")
+        hits = []
+        for row in rows:
+            pct = parse_pct(row[idx]) if idx < len(row) else None
+            if pct is not None and pct >= threshold:
+                z = row[zip_col].strip().strip('"')
+                hits.append((z, pct))
+                all_comp_zips.add(z)
+        hits.sort(key=lambda x: -x[1])
+        for z, p in hits:
+            bar_w = min(int(p * 2), 30)
+            bar = f"{MAGENTA}{'\u2588' * bar_w}{RESET}"
+            print(f"    {WHITE}{z}{RESET}  {bar} {DIM}{p:.3f}%{RESET}")
+        print(f"  {CYAN}Total: {len(hits)}{RESET}")
+
+    # Combine
+    all_new_zips = ua_zips | all_comp_zips
+
+    # ── FINAL LIST ──
+    result_header("FINAL ZIPCODE LIST")
+
+    if protected:
+        net_new = all_new_zips - protected
+        final = sorted(protected | all_new_zips)
+        print(f"\n  {DIM}\u2502{RESET} {WHITE}Protected zipcodes:{RESET}  {CYAN}{len(protected)}{RESET}")
+        print(f"  {DIM}\u2502{RESET} {WHITE}New from analysis:{RESET}    {GREEN}{len(net_new)}{RESET}")
+        print(f"  {DIM}\u2502{RESET} {WHITE}Combined total:{RESET}      {YELLOW}{BOLD}{len(final)}{RESET}")
+    else:
+        final = sorted(all_new_zips)
+        print(f"\n  {WHITE}Total zipcodes:{RESET}  {YELLOW}{BOLD}{len(final)}{RESET}")
+
+    print()
+    slow(f"  {', '.join(final)}", GREEN, 0.003)
+
+    # Copy-paste block
+    print()
+    result_header("COPY-PASTE READY")
+    print(f"\n{WHITE}{', '.join(final)}{RESET}\n")
+
+        # Save to file
+    out_dir = os.path.dirname(csv_path) or '.'
+    base = os.path.splitext(os.path.basename(csv_path))[0]
+    out_file = os.path.join(out_dir, f"{base}_cracked_{int(threshold)}pct.txt")
+    with open(out_file, 'w') as f:
+        f.write(f"Threshold: {threshold:.0f}%\n")
+        f.write(f"Protected: {len(protected)}\n")
+        f.write(f"New: {len(all_new_zips - protected) if protected else len(all_new_zips)}\n")
+        f.write(f"Total: {len(final)}\n\n")
+        f.write(', '.join(final) + '\n')
+    print(f"  {GREEN}\u2713{RESET} {DIM}Saved to: {out_file}{RESET}")
+
+if __name__ == '__main__':
+    main()
