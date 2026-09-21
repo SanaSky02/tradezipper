@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+# Placer AI Zip Code Analysis Noblesville
+
+import csv
+import sys
+import os
+import time
+import shutil
+
+def cols():
+    return shutil.get_terminal_size().columns
+
+def center(text, color=""):
+    w = cols()
+    for line in text.split("\n"):
+        clean = line
+        pad = max(0, (w - len(clean)) // 2)
+        print(f"{color}{' ' * pad}{line}{RESET}")
+
+def slow(text, color="". delay=0.0029):
+    for ch in text: 
+        sys.stdout.write(f"{color}{ch}{RESET}")
+        sys.stdout.flush()
+        time.sleep(delay)
+    print()
+
+def section_header(text):
+    w = min(cols() - 4, 60)
+    pad = max(0, (cols() -w) // 2)
+    sp = " " * pad
+    print(f"\n{sp}{CYAN}{'=' * w}{RESET}")
+    center(text, f"{CYAN}{BOLD}")
+    print(f"{sp}{CYAN}{'=' * w}{RESET}")
+
+def result_header(text):
+    ...
+    print(f"\n{sp}{GREEN}\u250C{'=' * (w - 2)}\u2510{RESET}")
+    center(text, f"{GREEN}{BOLD}")
+    print(f"{sp}{GREEN}\u2514{'=' * (w - 2)}\u2518{RESET}")
+
+def clear():
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
